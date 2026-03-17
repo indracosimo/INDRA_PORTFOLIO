@@ -54,6 +54,211 @@
       <p class="video-caption">Checkpoint demonstration</p>
     </div>
   </details>
+
+  <details class="dropdown code-dropdown">
+  <summary>My work</summary>
+  <div class="dropdown-body">
+
+    <p>
+      I focused on a pause system that <strong>does not rely on Time.timeScale</strong>.
+      Instead, a centralized <strong>GameStateHandler</strong> drives the paused state, and player logic
+      explicitly freezes movement + gravity + animation, while storing/restoring values to avoid bugs
+      (like infinite jumping when pausing mid-air).
+    </p>
+
+  
+    <h4>GameStateHandler (singleton + state machine + pause/resume)</h4>
+    <pre class="code"><code>public enum GameState
+{
+  Playing,
+  Paused,
+  GameOver
+}
+
+public class GameStateHandler : MonoBehaviour
+{
+  public static GameStateHandler Instance { get; private set; }
+  public GameState CurrentState { get; private set; } = GameState.Playing;
+
+  public Animator[] animators;
+
+  private UIManager uiManager;
+  private PlayerMovement playerMovement;
+
+  public bool isGameOver = false;
+
+  void Awake()
+  {
+    if (Instance == null) Instance = this;
+    else { Destroy(gameObject); return; }
+
+    uiManager = GetComponent&lt;UIManager&gt;();
+    if (uiManager == null)
+    {
+      Debug.Log("UIManager not found in scene, please attach.");
+    }
+  }
+
+  void Start()
+  {
+    if (uiManager != null) uiManager.OnResumePress();
+  }
+
+  public void ChangeState(GameState newState)
+  {
+    if (CurrentState == newState) return;
+    CurrentState = newState;
+
+    switch (newState)
+    {
+      case GameState.Paused:   PauseGame();  break;
+      case GameState.Playing:  ResumeGame(); break;
+      case GameState.GameOver: GameOver();   break;
+    }
+  }
+
+  public void TogglePause()
+  {
+    if (CurrentState == GameState.Playing) ChangeState(GameState.Paused);
+    else if (CurrentState == GameState.Paused) ChangeState(GameState.Playing);
+  }
+
+  public void PauseGame()
+  {
+    Debug.Log("Game Paused");
+
+    foreach (Animator animator in animators)
+    {
+      animator.enabled = false;
+    }
+  }
+
+  public void ResumeGame()
+  {
+    if (uiManager != null) uiManager.OnResumePress();
+    Debug.Log("Game Resumed");
+
+    ChangeState(GameState.Playing);
+  }
+
+  public void GameOver()
+  {
+    if (CurrentState == GameState.Paused) ResumeGame();
+
+    ChangeState(GameState.GameOver);
+    isGameOver = true;
+    Debug.Log("Game Over");
+
+    if (playerMovement != null) playerMovement.enabled = false;
+  }
+}</code></pre>
+
+    <h4>Player pause guard (freeze gravity + animation, restore cleanly)</h4>
+
+ <pre class="code"><code>// PlayerMovement
+if (GameStateHandler.Instance != null &&
+    GameStateHandler.Instance.CurrentState == GameState.Paused)
+{
+  if (ani != null && ani.speed != 0)
+  {
+    previousAnimatorSpeed = ani.speed;
+    ani.speed = 0;
+  }
+
+  if (rb.useGravity)
+  {
+    isGravityEnabled = true;
+    rb.useGravity = false;
+    rb.linearVelocity = Vector3.zero;
+  }
+
+  transform.position = previousPosition;
+  return;
+}
+else
+{
+  if (!isGravityEnabled && rb.useGravity == false)
+  {
+    rb.useGravity = true;
+  }
+
+  if (ani != null && ani.speed == 0 && previousAnimatorSpeed != 0)
+  {
+    ani.speed = previousAnimatorSpeed;
+  }
+}</code></pre>
+
+    <h4>Checkpoint trigger (store respawn point + feedback)</h4>
+    <pre class="code"><code>public class Checkpoint : MonoBehaviour
+{
+  private Respawner respawner;
+  private BoxCollider checkPointCollider;
+
+  public ParticleSystem effect;
+  [System.NonSerialized] public AudioManager audioManager;
+
+  void Awake()
+  {
+    checkPointCollider = GetComponent&lt;BoxCollider&gt;();
+    respawner = GameObject.FindGameObjectWithTag("Respawn").GetComponent&lt;Respawner&gt;();
+    audioManager = GameObject.FindGameObjectWithTag("Audio").GetComponent&lt;AudioManager&gt;();
+  }
+
+  private void OnTriggerEnter(Collider other)
+  {
+    if (other.gameObject.CompareTag("Player"))
+    {
+      respawner.respawnPoint = this.gameObject;
+      checkPointCollider.enabled = false;
+
+      audioManager.PlaySFX(audioManager.checkpoint);
+      effect.Play(true);
+    }
+  }
+}</code></pre>
+
+    <h4>Damage source trigger (hurt / death routing)</h4>
+    <pre class="code"><code>public class DamageSource : MonoBehaviour
+{
+  PlayerUI playerUI;
+  PlayerMovement player;
+  CollectionSystem collectionSystem;
+
+  void Awake()
+  {
+    player = gameObject.GetComponent&lt;PlayerMovement&gt;();
+    collectionSystem = GetComponent&lt;CollectionSystem&gt;();
+
+    if (collectionSystem != null)
+    {
+      playerUI = collectionSystem.playerUI;
+    }
+  }
+
+  void OnTriggerEnter(Collider other)
+  {
+    if (other.gameObject.tag == "Enemy")
+    {
+      if (collectionSystem != null && playerUI != null)
+      {
+        player.GotHurt();
+        playerUI.MinusHealth();
+      }
+      else
+      {
+        Debug.Log("Collection system or PlayerUI is missing");
+      }
+    }
+
+    if (other.gameObject.tag == "Serpent")
+    {
+      playerUI.Death();
+    }
+  }
+}</code></pre>
+
+  </div>
+</details>
 </div>
 
             <!-- Engine Light -->
@@ -83,7 +288,7 @@
   </details>
 
   <details class="dropdown code-dropdown">
-    <summary>Code snippets</summary>
+    <summary>My work</summary>
     <div class="dropdown-body">
                         <p>
                             Modular approach: a <strong>base vehicle pawn</strong> holds shared driving behaviors (input, drift,
@@ -134,7 +339,7 @@ ChaosVehicleMovement-&gt;EngineSetup.MaxRPM *= 2.5f;
 
 GetMesh()-&gt;AddImpulse(GetActorForwardVector() * BoostThrust);</code></pre>
 
-                        <h4>Derived car “feel”: muscle car tuning</h4>
+                        <h4>Car feel: muscle car tuning</h4>
                         <pre class="code"><code>// MuscleCar: tuning values live in the derived class
 GetChaosVehicleMovement()-&gt;WheelSetups.SetNum(4);
 
