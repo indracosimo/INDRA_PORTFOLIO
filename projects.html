@@ -16,80 +16,251 @@
 <body>
     <nav class="navbar">
         <div class="navbar-bar container">
-          <div class="brand">
-            <h2 class="title">Indra Cosimo Bowen-Paoli</h2>
-            <p class="subtitle"><strong>Game programmer</strong></p>
-          </div>
+            <div class="brand">
+                <h2 class="title">Indra Cosimo Bowen-Paoli</h2>
+                <p class="subtitle"><strong>Game programmer</strong></p>
+            </div>
 
-          <ul class="nav-links">
-              <li><a href="index.html">Home</a></li>
-              <li class="active"><a href="projects.html">Projects</a></li>
-              <li><a href="videos.html">Videos</a></li>
-              <!-- <li><a href="index.html#about">About</a></li> -->
-          </ul>
+            <ul class="nav-links">
+                <li><a href="index.html">Home</a></li>
+                <li class="active"><a href="projects.html">Projects</a></li>
+            </ul>
         </div>
     </nav>
 
     <main class="container page">
-      <section class="projects-container">
-          <!-- Nutscue -->
-          <div class="project">
-              <a target="_blank" rel="noopener noreferrer" href="https://futuregames.itch.io/nutscue">
-                  <img src="assets/images/nutscue_logo.png" alt="Nutscue logo" class="project-img">
-              </a>
-              <p>A Unity-based platformer where you play as a squirrel mother trying to save her children. I made the checkpoint, pause, damage and sound systems.</p>
-          </div>
+        <section class="projects-container">
+            <!-- Nutscue -->
+<div class="project" id="nutscue">
+  <a target="_blank" rel="noopener noreferrer" href="https://futuregames.itch.io/nutscue">
+    <img src="assets/images/nutscue_logo.png" alt="Nutscue logo" class="project-img">
+  </a>
 
-          <!-- Engine Light -->
-          <div class="project">
-              <a target="_blank" rel="noopener noreferrer" href="https://futuregames.itch.io/enginelight">
-                  <img src="assets/images/enginelight_logo.png" alt="Engine Light logo" class="project-img">
-              </a>
-              <p>An ambitious project made in Unreal 5. A survival driving game where your car is your safezone. I was responsible for programming the car and I had modularity in mind when developing it. Chaos Physics was implemented as our physics component.</p>
-          </div>
+  <details class="dropdown desc-dropdown">
+    <summary>Description</summary>
+    <div class="dropdown-body">
+      A Unity-based platformer where you play as a squirrel mother trying to save her children.
+      I made the checkpoint, pause, damage and sound systems.
+    </div>
+  </details>
 
-          <!-- Bungeon -->
-          <div class="project">
-              <a target="_blank" rel="noopener noreferrer" href="https://futuregames.itch.io/the-bungeon">
-                  <img src="assets/images/bungeon_logo.png" alt="Bungeon logo" class="project-img">
-              </a>
-              <p>A first person dungeon crawler with the ever looming presence of an evil rabbit. I worked on the architecture of game including, pause systems, character movement and dynamic audio.</p>
-          </div>
-      </section>
+  <details class="dropdown video-dropdown">
+    <summary>Video</summary>
+    <div class="dropdown-body">
+      <video class="project-video" controls preload="metadata" playsinline poster="assets/videos/posters/nutscue2.png">
+        <source src="assets/videos/NutscueCheckpoints.webm" type="video/webm" />
+        Your browser does not support HTML video.
+      </video>
+      <p class="video-caption">Checkpoint demonstration</p>
+    </div>
+  </details>
+</div>
+
+            <!-- Engine Light -->
+<div class="project" id="engine-light">
+  <a target="_blank" rel="noopener noreferrer" href="https://futuregames.itch.io/enginelight">
+    <img src="assets/images/enginelight_logo.png" alt="Engine Light logo" class="project-img">
+  </a>
+
+  <details class="dropdown desc-dropdown">
+    <summary>Description</summary>
+    <div class="dropdown-body">
+      An ambitious project made in Unreal 5, a survival driving game where your car is your safe zone.
+      I was responsible for the vehicle programming and kept it modular (shared base + specialized classes, in this case a muscle car was used as the main drivable vehicle)
+      so we could iterate on handling and support upgrades/tuning.
+    </div>
+  </details>
+
+  <details class="dropdown video-dropdown">
+    <summary>Video</summary>
+    <div class="dropdown-body">
+      <video class="project-video" controls preload="metadata" playsinline poster="assets/videos/posters/enginelight_logo.png">
+        <source src="assets/videos/EngineClip_webm.webm" type="video/webm" />
+        Your browser does not support HTML video.
+      </video>
+            <p class="video-caption">Driving demonstration</p>
+    </div>
+  </details>
+
+  <details class="dropdown code-dropdown">
+    <summary>Code snippets</summary>
+    <div class="dropdown-body">
+                        <p>
+                            Modular approach: a <strong>base vehicle pawn</strong> holds shared driving behaviors (input, drift,
+                            boost, reset), while each car type focuses on <strong>tuning data</strong>.
+                            A unified controller swaps between FPS and vehicle pawns and swaps input mapping contexts.
+                        </p>
+
+                        <h4>Base car pawn: shared setup + driving hooks</h4>
+                        <pre class="code"><code>// Base: shared components + chaos movement access
+SetRootComponent(GetMesh());
+
+InteriorSpringArm = CreateDefaultSubobject&lt;USpringArmComponent&gt;(TEXT("Interior Spring Arm"));
+InteriorSpringArm-&gt;SetupAttachment(GetMesh());
+
+InteriorCamera = CreateDefaultSubobject&lt;UCameraComponent&gt;(TEXT("Interior Camera"));
+InteriorCamera-&gt;SetupAttachment(InteriorSpringArm, USpringArmComponent::SocketName);
+
+ChaosVehicleMovement = CastChecked&lt;UChaosWheeledVehicleMovementComponent&gt;(GetVehicleMovement());
+GetMesh()-&gt;SetSimulatePhysics(true);
+GetMesh()-&gt;SetCollisionProfileName(FName("Vehicle"));</code></pre>
+
+                        <h4>Drift: reduce grip + increase angular damping</h4>
+                        <pre class="code"><code>// Drift
+bIsDrifting = true;
+
+for (auto&amp; WheelSetup : ChaosVehicleMovement-&gt;WheelSetups)
+{
+  if (WheelSetup.WheelClass)
+  {
+    WheelSetup.WheelClass.GetDefaultObject()-&gt;FrictionForceMultiplier
+      = DefaultGrip * DriftGripReduction;
+  }
+}
+
+GetMesh()-&gt;SetAngularDamping(DefaultAngularDrag * DriftAngularDragMultiplier);
+ChaosVehicleMovement-&gt;SetHandbrakeInput(true);</code></pre>
+
+                        <h4>Nitro: temporary engine boost + impulse</h4>
+                        <pre class="code"><code>// Nitro boost
+bIsBoosting = true;
+bCanBoost = false;
+
+float OriginalMaxTorque = ChaosVehicleMovement-&gt;EngineSetup.MaxTorque;
+float OriginalMaxRPM = ChaosVehicleMovement-&gt;EngineSetup.MaxRPM;
+
+ChaosVehicleMovement-&gt;EngineSetup.MaxTorque *= BoostMultiplier;
+ChaosVehicleMovement-&gt;EngineSetup.MaxRPM *= 2.5f;
+
+GetMesh()-&gt;AddImpulse(GetActorForwardVector() * BoostThrust);</code></pre>
+
+                        <h4>Derived car “feel”: muscle car tuning</h4>
+                        <pre class="code"><code>// MuscleCar: tuning values live in the derived class
+GetChaosVehicleMovement()-&gt;WheelSetups.SetNum(4);
+
+GetChaosVehicleMovement()-&gt;WheelSetups[0].WheelClass = UCPP_BasicFrontWheel::StaticClass();
+GetChaosVehicleMovement()-&gt;WheelSetups[2].WheelClass = UCPP_BasicRearWheel::StaticClass();
+
+GetChaosVehicleMovement()-&gt;EngineSetup.MaxTorque = 750.f;
+GetChaosVehicleMovement()-&gt;EngineSetup.MaxRPM = 7000.0f;</code></pre>
+
+                        <h4>Unified controller: swap pawns + swap input mapping contexts</h4>
+                        <pre class="code"><code>// Pawn swap + mapping context swap
+Subsystem-&gt;ClearAllMappings();
+
+if (NewPawn == VehiclePawn &amp;&amp; CarInputMappingContext)
+{
+  Subsystem-&gt;AddMappingContext(CarInputMappingContext, 0);
+}
+else if (NewPawn == FPSPawn &amp;&amp; FPSInputMappingContext)
+{
+  Subsystem-&gt;AddMappingContext(FPSInputMappingContext, 0);
+}
+
+Possess(NewPawn);</code></pre>
+                    </div>
+                </details>
+            </div>
+
+            <!-- Hobby Engine (standalone) -->
+<div class="project" id="hobby-engine">
+  <img src="assets/images/Dumpster.png" alt="DumpsterFire Engine" class="project-img">
+
+  <details class="dropdown desc-dropdown">
+    <summary>Description</summary>
+    <div class="dropdown-body">
+<div class="dropdown-body">
+                        DumpsterFire Engine is a 3D engine using OpenGL as its graphical backend. At its current stage I can
+                        generate 3D and 2D objects, load meshes via a .obj loader, set textures and various lighting settings.
+                        <br>
+                        The in-engine UI allows us to spawn entities and play around with them.
+                        <br><br>
+                        At its current stage, the engine can:
+                        <br>• Render basic 3D and 2D objects.
+                        <br>• Load meshes via a .obj loader.
+                        <br>• Apply diffuse + specular textures.
+                        <br>• Configure lighting in real time (Directional / Point / Spot) with support for up to 16 lights.
+                        <br>• Use ImGui panels to spawn/edit entities, adjust render settings, and debug systems while running.
+                        <br>• Save/load entity data via JSON serialization.
+                    </div>
+      <br><br>
+      Repo:
+      <a href="https://github.com/indracosimo/DumpsterFireRefuelled" target="_blank" rel="noopener noreferrer">
+        DumpsterFireRefuelled
+      </a>
+    </div>
+  </details>
+
+  <details class="dropdown video-dropdown">
+    <summary>Video</summary>
+    <div class="dropdown-body">
+      <video class="project-video" controls preload="metadata" playsinline>
+        <source src="assets/videos/DumpsterFireEngine.webm" type="video/webm" />
+        Your browser does not support HTML video.
+      </video>
+                  <p class="video-caption">Short demo showing shadow mapping and some short gameplay footage</p>
+
+    </div>
+  </details>
+
+  <!-- <details class="dropdown">
+    <summary>Notes</summary> -->
+    
+                </details>
+            </div>
+
+            <!-- Bungeon -->
+            <div class="project" id="bungeon">
+                <a target="_blank" rel="noopener noreferrer" href="https://futuregames.itch.io/the-bungeon">
+                    <img src="assets/images/bungeon_logo.png" alt="Bungeon logo" class="project-img">
+                </a>
+
+                <details class="dropdown desc-dropdown">
+                    <summary>Description</summary>
+                    <div class="dropdown-body">
+                        A first person dungeon crawler with the ever looming presence of an evil rabbit.
+                        I worked on the architecture of game including pause systems, character movement, and dynamic audio.
+                    </div>
+                </details>
+            </div>
+        </section>
     </main>
 
-     <!--FOOTER-->
-  <footer class="footer">
-    <div class="footer-container">
-      <div class="footer-columns">
+    <!--FOOTER-->
+    <footer class="footer">
+        <div class="footer-container">
+            <div class="footer-columns">
 
-        <div class="footer-left">
-          <figure class="image is-64x64">
-            <img class="is-rounded" src="assets/images/indra_nice.jpg" alt="Profile Picture">
-          </figure>
-          <div class="about-blurb">
-            <a href="#about" class="footer-blurb-link">
-              <p>
-                Oh hey, what's goin' on? My name is Indra and I live in Stockholm, Sweden.
-                I am a game programmer; however, my passion for games lies in design...
-              </p>
-            </a>
-          </div>
+                <div class="footer-left">
+                    <figure class="image is-64x64">
+                        <img class="is-rounded" src="assets/images/indra_nice.jpg" alt="Profile Picture">
+                    </figure>
+                    <div class="about-blurb">
+                        <a href="#about" class="footer-blurb-link">
+                            <p>
+                                Oh hey, what's goin' on? My name is Indra and I live in Stockholm, Sweden.
+                                I am a game programmer; however, my passion for games lies in design...
+                            </p>
+                        </a>
+                    </div>
+                </div>
+
+                <!--Links-->
+                <div class="footer-right">
+                    <h2>Find me on</h2>
+                    <div class="footer-links">
+                        <a href="mailto:indracosimo@gmail.com" target="_blank" title="Gmail"><i class="bx bxl-gmail"
+                                style="font-size: 2rem;"></i></a>
+                        <a href="https://www.linkedin.com/in/indra-cosimo-bowen-paoli-a104a71a9/" target="_blank"
+                            title="LinkedIn"><i class="bx bxl-linkedin-square" style="font-size: 2rem;"></i></a>
+                        <a href="https://github.com/indracosimo" target="_blank" title="GitHub"><i class="bx bxl-github"
+                                style="font-size: 2rem;"></i></a>
+                    </div>
+                </div>
+
+            </div>
         </div>
-
-        <!--Links-->
-        <div class="footer-right">
-          <h2>Find me on</h2>
-          <div class="footer-links">
-            <a href="mailto:indracosimo@gmail.com" target="_blank" title="Gmail"><i class="bx bxl-gmail" style="font-size: 2rem;"></i></a>
-            <a href="https://www.linkedin.com/in/indra-cosimo-bowen-paoli-a104a71a9/" target="_blank" title="LinkedIn"><i class="bx bxl-linkedin-square" style="font-size: 2rem;"></i></a>
-            <a href="https://github.com/indracosimo" target="_blank" title="GitHub"><i class="bx bxl-github" style="font-size: 2rem;"></i></a>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  </footer>
+    </footer>
 </body>
 
 </html>
