@@ -423,20 +423,222 @@ Possess(NewPawn);</code></pre>
             </div>
 
             <!-- Bungeon -->
-            <div class="project" id="bungeon">
-                <a target="_blank" rel="noopener noreferrer" href="https://futuregames.itch.io/the-bungeon">
-                    <img src="assets/images/bungeon_logo.png" alt="Bungeon logo" class="project-img">
-                </a>
+<!-- Bungeon -->
+<div class="project" id="bungeon">
+  <a target="_blank" rel="noopener noreferrer" href="https://futuregames.itch.io/the-bungeon">
+    <img src="assets/images/bungeon_logo.png" alt="Bungeon logo" class="project-img">
+  </a>
 
-                <details class="dropdown desc-dropdown">
-                    <summary>Description</summary>
-                    <div class="dropdown-body">
-                        A first person dungeon crawler with the ever looming presence of an evil rabbit.
-                        I worked on the architecture of game including pause systems, character movement, and dynamic audio.
-                    </div>
-                </details>
-            </div>
-        </section>
+  <details class="dropdown desc-dropdown">
+    <summary>Description</summary>
+    <div class="dropdown-body">
+      A first-person dungeon crawler with the looming presence of an evil rabbit.
+      <br><br>
+      I worked as a generalist across core systems:
+      <br>• <strong>GameState-driven pause</strong> (systems subscribe/unsubscribe / early-return on pause)
+      <br>• <strong>FPS character controller</strong> (movement, jump/gravity, dash/knockback, bounds reset)
+      <br>• <strong>Audio</strong> (music + SFX one-shots, plus surface-based footsteps)
+      <br>• <strong>Event system</strong> (lightweight event hub for gameplay signals)
+      <br>• <strong>Dialogue</strong> (UI + timed close + trigger)
+      <br>• <strong>Notes</strong> (raycast interact + UI display that temporarily disables player + pausing)
+    </div>
+  </details>
+
+  <details class="dropdown code-dropdown">
+    <summary>Code snippets</summary>
+    <div class="dropdown-body">
+
+      <h4>GameState-driven pause (controller enable/disable)</h4>
+      <pre class="code"><code>// FPSController
+private void Awake()
+{
+  characterController = GetComponent&lt;CharacterController&gt;();
+  GameStateManager.Instance.OnGameStateChanged += OnGameStateChanged;
+  GameStateManager.Instance.SetState(GameState.Play);
+}
+
+private void OnDestroy()
+{
+  GameStateManager.Instance.OnGameStateChanged -= OnGameStateChanged;
+}
+
+private void OnGameStateChanged(GameState newState)
+{
+  enabled = newState == GameState.Play;
+  Cursor.lockState = CursorLockMode.None;
+  Cursor.visible = newState != GameState.Play;
+}</code></pre>
+
+      <h4>FPS movement + dash (CharacterController)</h4>
+      <pre class="code"><code>// FPSController
+Vector3 forward = transform.TransformDirection(Vector3.forward);
+Vector3 right = transform.TransformDirection(Vector3.right);
+
+bool isRunning = Input.GetKey(KeyCode.LeftShift);
+
+float curSpeedX = canMove ? (isRunning ? runSpeed : walkSpeed) * Input.GetAxis("Vertical") : 0;
+float curSpeedY = canMove ? (isRunning ? runSpeed : walkSpeed) * Input.GetAxis("Horizontal") : 0;
+
+Vector3 move = (forward * curSpeedX) + (right * curSpeedY);
+
+if (move.magnitude &gt; 1f)
+{
+  move.Normalize(); // diagonal speed fix
+  move *= (isRunning ? runSpeed : walkSpeed);
+}
+
+moveDirection = move;
+
+if (Input.GetButton("Jump") &amp;&amp; canMove &amp;&amp; characterController.isGrounded)
+  moveDirection.y = jumpPower;
+
+if (!characterController.isGrounded)
+  moveDirection.y -= gravity * Time.deltaTime;
+
+characterController.Move(moveDirection * Time.deltaTime);
+
+if (Input.GetKeyDown(KeyCode.Mouse1)) dashing = true;
+
+if (dashing)
+{
+  capsuleCollider.enabled = false;
+
+  m_dashTimer += Time.deltaTime;
+  if (m_dashTimer &gt;= 0.5f)
+  {
+    dashing = false;
+    m_dashTimer = 0;
+    capsuleCollider.enabled = true;
+  }
+
+  Vector3 dashDirection =
+    (transform.forward * Input.GetAxis("Vertical") +
+     transform.right * Input.GetAxis("Horizontal")).normalized;
+
+  characterController.Move(dashDirection * m_dashDistance);
+}</code></pre>
+
+      <h4>AudioManager (music + SFX routing)</h4>
+      <pre class="code"><code>public class AudioManager : MonoBehaviour
+{
+  [SerializeField] private AudioSource musicSource;
+  [SerializeField] private AudioSource sfxSource;
+
+  public AudioClip background;
+  [Range(0, 1)] public float backgroundVolume = 1.0f;
+
+  public AudioClip collectable;
+  [Range(0, 1)] public float collectableVolume = 1.0f;
+
+  void Start()
+  {
+    musicSource.clip = background;
+    musicSource.volume = backgroundVolume;
+    musicSource.Play();
+  }
+
+  public void PlaySFX(AudioClip clip)
+  {
+    if (clip == collectable) sfxSource.volume = collectableVolume;
+    sfxSource.PlayOneShot(clip);
+  }
+}</code></pre>
+
+      <h4>Footsteps: pick sound by surface under player</h4>
+      <pre class="code"><code>// Footsteps
+if (GameStateManager.Instance != null &&
+    GameStateManager.Instance.CurrentGameState == GameState.Pause) return;
+
+if (characterController.isGrounded && characterController.velocity.magnitude &gt; 1f)
+{
+  if (!footstepSource.isPlaying)
+    PlayFootsteps();
+}
+
+string GetCurrentLayer()
+{
+  if (Physics.Raycast(transform.position, Vector3.down, out RaycastHit hit, 2f))
+    return LayerMask.LayerToName(hit.collider.gameObject.layer);
+
+  return "Unknown";
+}</code></pre>
+
+      <h4>Event manager (lightweight gameplay events)</h4>
+      <pre class="code"><code>public class EventsManager : MonoBehaviour
+{
+  public static EventsManager instance { get; private set; }
+
+  private void Awake()
+  {
+    if (instance != null)
+      Debug.LogError("Found more than one Game Events Manager in the scene.");
+    instance = this;
+  }
+
+  public event Action onPlayerJump;
+
+  public void PlayerJump()
+  {
+    onPlayerJump?.Invoke();
+  }
+}</code></pre>
+
+      <h4>Dialogue: UI show + timed close</h4>
+      <pre class="code"><code>// DialogueManager
+public void StartDialogue(int day)
+{
+  UI.SetActive(true);
+
+  nameText.text = baseDialogue.npcName;
+  dialogueText.text = Messages[day - 1];
+
+  StartCoroutine(CloseAfterSeconds());
+}
+
+IEnumerator CloseAfterSeconds()
+{
+  yield return new WaitForSeconds(secondsToShow);
+  EndDialogue();
+}
+
+public void EndDialogue()
+{
+  UI.SetActive(false);
+}</code></pre>
+
+      <h4>Notes: raycast interact + open UI (disable player + pause controller)</h4>
+      <pre class="code"><code>// Raycast
+if (Physics.Raycast(_camera.ViewportToWorldPoint(new Vector3(0.5f, 0.5f)),
+    transform.forward, out RaycastHit hit, rayLength))
+{
+  var readableItem = hit.collider.GetComponent&lt;NoteController&gt;();
+  if (readableItem != null)
+  {
+    noteController = readableItem;
+    HighlightCrosshair(true);
+  }
+  else
+  {
+    ClearNote();
+  }
+}
+
+if (noteController != null &amp;&amp; Input.GetKeyDown(interactKey))
+{
+  noteController.ShowNote();
+}
+
+// NoteController
+noteTextUI.text = noteData.noteText;
+noteCanvas.SetActive(true);
+player.enabled = false;
+
+pauseController = GameObject.FindAnyObjectByType&lt;PauseController&gt;();
+if (pauseController != null) pauseController.enabled = false;</code></pre>
+
+    </div>
+  </details>
+</div>
     </main>
 
     <!--FOOTER-->
