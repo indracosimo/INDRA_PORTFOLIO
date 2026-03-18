@@ -380,7 +380,7 @@ Possess(NewPawn);</code></pre>
             <!-- DumpsterFire Engine -->
 <div class="project" id="hobby-engine">
   <a target="_blank" rel="noopener noreferrer" href="https://github.com/indracosimo/DumpsterFireRefuelled">
-    <img src="assets/images/Dumpster.png" alt="DumpsterFire Engine" class="project-img">
+    <img src="assets/posters/dumpsterengine.png" alt="DumpsterFire Engine" class="project-img">
   </a>
 
   <details class="dropdown desc-dropdown">
@@ -401,9 +401,6 @@ Possess(NewPawn);</code></pre>
                         <br>• Save/load entity data via JSON serialization.
                     </div>
       <br><br>
-      Repo:
-      <a href="https://github.com/indracosimo/DumpsterFireRefuelled" target="_blank" rel="noopener noreferrer">
-        DumpsterFireRefuelled
       </a>
     </div>
   </details>
@@ -418,6 +415,251 @@ Possess(NewPawn);</code></pre>
                   <p class="video-caption">Short demo showing shadow mapping and some short gameplay footage</p>
 
     </div>
+  </details>
+    <details class="dropdown code-dropdown">
+    <summary>My work</summary>
+    <div class="dropdown-body">
+      <section>
+  <h4>DumpsterFireEngine code snippets</h4>
+  <p>
+    Highlights from the engine: AABB collision detection/resolution, and a shadow mapping pipeline (depth FBO + PCF sampling).
+  </p>
+<!-- 
+  <h5>AABB collision</h5> -->
+
+  <p><strong>AABB bounds (from transform)</strong> Axis-aligned bounding box built from position + scale (half-extents).</p>
+  <pre class="code"><code>struct AABB
+{
+    glm::vec3 min;
+    glm::vec3 max;
+
+    AABB() : min(0.0f), max(0.0f) {}
+
+    AABB(const glm::vec3& center, const glm::vec3& halfExtents) : min(center - halfExtents), max(center + halfExtents) {}
+
+    static AABB FromTransform(const glm::vec3& position, const glm::vec3& scale)
+    {
+        glm::vec3 halfExtents = scale * 0.5f;
+        return AABB(position, halfExtents);
+    }
+
+    glm::vec3 GetCenter() const {return (min + max) * 0.5f;}
+    glm::vec3 GetExtents() const {return (max - min) * 0.5f;}
+};</code></pre>
+
+  <p><strong>Collision test (minimum penetration axis)</strong> Overlap test on X/Y/Z; early-out if separated; chooses smallest overlap axis and signs it using centers.</p>
+  <pre class="code"><code>bool PhysicsManager::bCheckAABBCollision(const AABB& a, const AABB& b, CollisionInfo& outInfo)
+{
+    outInfo = CollisionInfo{};
+
+    const float overlapX = std::min(a.max.x, b.max.x) - std::max(a.min.x, b.min.x);
+    const float overlapY = std::min(a.max.y, b.max.y) - std::max(a.min.y, b.min.y);
+    const float overlapZ = std::min(a.max.z, b.max.z) - std::max(a.min.z, b.min.z);
+
+    const float eps = 0.0001f;
+    if (overlapX <= eps || overlapY <= eps || overlapZ <= eps)
+        return false;
+
+    float minOverlap = overlapX;
+    glm::vec3 axis(1.0f, 0.0f, 0.0f);
+
+    if (overlapY < minOverlap)
+    {
+        minOverlap = overlapY;
+        axis = glm::vec3(0.0f, 1.0f, 0.0f);
+    }
+    if (overlapZ < minOverlap)
+    {
+        minOverlap = overlapZ;
+        axis = glm::vec3(0.0f, 0.0f, 1.0f);
+    }
+
+    const glm::vec3 aCenter = a.GetCenter();
+    const glm::vec3 bCenter = b.GetCenter();
+    glm::vec3 dir = aCenter - bCenter;
+
+    if (axis.x != 0.0f) axis.x = (dir.x >= 0.0f) ? 1.0f : -1.0f;
+    if (axis.y != 0.0f) axis.y = (dir.y >= 0.0f) ? 1.0f : -1.0f;
+    if (axis.z != 0.0f) axis.z = (dir.z >= 0.0f) ? 1.0f : -1.0f;
+
+    outInfo.bCollided = true;
+    outInfo.contactAxis = axis;
+    outInfo.contactDepth = minOverlap;
+    return true;
+}</code></pre>
+
+  <p><strong>Collision resolution (separation + grounded)</strong> After detection: runs callback, computes separation correction, handles static vs dynamic objects, updates AABBs, resolves response, and sets grounded state for the player.</p>
+  <pre class="code"><code>// collision detection + resolution + separation
+for (size_t i = 0; i < physicsComponents.size(); i++)
+{
+    for (size_t j = i + 1; j < physicsComponents.size(); j++)
+    {
+        CollisionInfo info;
+        if (!bCheckAABBCollision(collisionBoxes[i], collisionBoxes[j], info))
+            continue;
+        
+        if (collisionCallback)
+        {
+            collisionCallback((int)i, (int)j, entityTypes[i], entityTypes[j]);
+        }
+        
+        const float slop = 0.001f;
+        float sep = info.contactDepth + slop;
+        glm::vec3 correction = info.contactAxis * sep;
+
+        PhysicsComponent& physA = physicsComponents[i];
+        PhysicsComponent& physB = physicsComponents[j];
+
+        bool AStatic = physA.bIsKinematic || entityTypes[i] == CollisionType::OBSTACLE || entityTypes[i] == CollisionType::PLATFORM;
+        bool BStatic = physB.bIsKinematic || entityTypes[j] == CollisionType::OBSTACLE || entityTypes[j] == CollisionType::PLATFORM;
+
+        if (!AStatic && BStatic)
+        {
+            cubes[i].position += correction;
+        }
+        else if (AStatic && !BStatic)
+        {
+            cubes[j].position -= correction;
+        }
+        else if (!AStatic && !BStatic)
+        {
+            cubes[i].position += correction * 0.5f;
+            cubes[j].position -= correction * 0.5f;
+        }
+        
+        collisionBoxes[i] = AABB::FromTransform(cubes[i].position, cubes[i].scale);
+        collisionBoxes[j] = AABB::FromTransform(cubes[j].position, cubes[j].scale);
+        
+        ResolveCollision((int)i, (int)j, info);
+
+        if (entityTypes[i] == CollisionType::PLAYER && info.contactAxis.y > 0.5f)
+        {
+            physicsComponents[i].bGrounded = true;
+            physicsComponents[i].groundNormal = info.contactAxis;
+        }
+
+        if (entityTypes[j] == CollisionType::PLAYER && info.contactAxis.y < -0.5f)
+        {
+            physicsComponents[j].bGrounded = true;
+            physicsComponents[j].groundNormal = -info.contactAxis;
+        }
+    }
+}</code></pre>
+
+  <h5>Shadow mapping</h5>
+
+  <p><strong>Bias matrix</strong> Transforms clip-space (-1..1) into texture-space (0..1) before sampling the shadow map.</p>
+  <pre class="code"><code>glm::mat4 BasicShadowMapper::BiasMatrix()
+{
+    glm::mat4 bias(1.0f);
+    bias[0][0] = 0.5f; bias[1][1] = 0.5f; bias[2][2] = 0.5f;
+    bias[3][0] = 0.5f; bias[3][1] = 0.5f; bias[3][2] = 0.5f;
+    return bias;
+}</code></pre>
+
+  <p><strong>Depth framebuffer + depth texture</strong> Creates a depth-only framebuffer and configures the depth texture for hardware depth compare (sampler2DShadow).</p>
+  <pre class="code"><code>void BasicShadowMapper::Init(light& lightSource)
+{
+    if (lightSource.shadowFrameBuffer != 0 && lightSource.shadowDepthTexture != 0) return;
+
+    glGenFramebuffers(1, &lightSource.shadowFrameBuffer);
+    glGenTextures(1, &lightSource.shadowDepthTexture);
+    glBindTexture(GL_TEXTURE_2D, lightSource.shadowDepthTexture);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, lightSource.shadowMapResolution.x, lightSource.shadowMapResolution.y, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    const float border[4] = { 1.f, 1.f, 1.f, 1.f };
+    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, lightSource.shadowFrameBuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, lightSource.shadowDepthTexture, 0);
+
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}</code></pre>
+
+  <p><strong>Directional light depth pass (light-space matrix)</strong> Renders depth from a directional light POV using an orthographic projection; stores shadowMapMatrix for sampling later.</p>
+  <pre class="code"><code>void BasicShadowMapper::BeginDirectionalLight(light& lightSource)
+{
+    Init(lightSource);
+
+    glViewport(0, 0, lightSource.shadowMapResolution.x, lightSource.shadowMapResolution.y);
+    glBindFramebuffer(GL_FRAMEBUFFER, lightSource.shadowFrameBuffer);
+    glClear(GL_DEPTH_BUFFER_BIT);
+
+    //glEnable(GL_CULL_FACE);
+    //glCullFace(GL_FRONT);
+
+    const glm::vec3 dir = glm::normalize(lightSource.direction);
+    const glm::vec3 up(0.f, 1.f, 0.f);
+
+    const float z = lightSource.shadowMapZoom;
+    const float nearPlane = 0.1f;
+    const float farPlane = 200.0f;
+
+    const glm::mat4 lightView = glm::lookAt(lightSource.shadowMapRenderPosition, lightSource.shadowMapRenderPosition + dir, up);
+    
+    const glm::mat4 lightProj = glm::ortho(-z, z, -z, z, nearPlane, farPlane);
+    
+    lightSpaceMatrix = lightProj * lightView;
+
+    lightSource.shadowMapMatrix = BiasMatrix() * lightSpaceMatrix;
+
+    depthShader->use();
+    depthShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
+}</code></pre>
+
+  <p><strong>PCF shadow sampling (GLSL)</strong> 3x3 PCF filter using sampler2DShadow; returns a shadow factor.</p>
+  <pre class="code"><code>// Shadow mapping
+uniform sampler2DShadow shadowMap;
+uniform mat4 shadowMapMatrix;
+uniform vec2 shadowMapTexelSize = vec2(1.0 / 2048.0, 1.0 / 2048.0);
+uniform float shadowCalcBias = 0.005;
+uniform bool bUseShadowMap = false;
+
+float CalcShadowWithPCF()
+{
+    if (!bUseShadowMap)
+        return 0.0;
+
+    vec4 shadowSpace = shadowMapMatrix * vec4(fragPosition, 1.0);
+    shadowSpace.xyz /= shadowSpace.w;
+
+    if (shadowSpace.x < 0.0 || shadowSpace.x > 1.0 ||
+        shadowSpace.y < 0.0 || shadowSpace.y > 1.0 ||
+        shadowSpace.z < 0.0 || shadowSpace.z > 1.0)
+        return 0.0;
+
+    float visibility = 0.0;
+    vec2 texelSize = shadowMapTexelSize;
+
+    for (int x = -1; x <= 1; ++x)
+    {
+        for (int y = -1; y <= 1; ++y)
+        {
+            vec2 uv = shadowSpace.xy + texelSize * vec2(x, y);
+            float refDepth = shadowSpace.z - shadowCalcBias;
+            visibility += texture(shadowMap, vec3(uv, refDepth));
+        }
+    }
+
+    visibility /= 9.0;     
+    return 1.0 - visibility; 
+}</code></pre>
+</section>
+      </div>
   </details>
 
   <!-- <details class="dropdown">
@@ -461,7 +703,7 @@ Possess(NewPawn);</code></pre>
   </details>
 
   <details class="dropdown code-dropdown">
-    <summary>Code snippets</summary>
+    <summary>My work</summary>
     <div class="dropdown-body">
 
       <h4>GameState-driven pause (controller enable/disable)</h4>
